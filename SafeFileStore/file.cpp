@@ -6,7 +6,7 @@
 #include "file.h"
 #include "user_logging.h"
 
-std::vector<BYTE> *ReadFile(const std::string &path) 
+std::vector<std::byte> *ReadFile(const std::string &path) 
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
 
@@ -18,8 +18,8 @@ std::vector<BYTE> *ReadFile(const std::string &path)
     std::streamsize fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    std::vector<BYTE> *buffer = new std::vector<BYTE>(fileSize);
-    if (!file.read(buffer->data(), fileSize)) {
+    std::vector<std::byte> *buffer = new std::vector<std::byte>(fileSize);
+    if (!file.read((char *)buffer->data(), fileSize)) {
         LOG_ERROR("failed to read file %s", path);
         return nullptr;
     } 

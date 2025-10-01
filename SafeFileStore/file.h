@@ -7,4 +7,4 @@
 #include "shared.h"
 
 
-std::vector<BYTE> *ReadFile(const std::string &path);
+std::vector<std::byte> *ReadFile(const std::string &path);
