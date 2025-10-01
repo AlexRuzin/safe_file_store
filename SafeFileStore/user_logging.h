@@ -1,11 +1,3 @@
-#if _MSC_VER > 1000
-#pragma once
-#endif //_MSC_VER > 1000
-
-#if defined(_WIN32)
-#include <Windows.h>
-#endif //_WIN32
-
 #include <string>
 #include <iostream>
 #include <chrono>
@@ -15,6 +7,7 @@
 #include <map>
 #include <vector>
 #include <stdint.h>
+#include <sys/types.h>
 
 //
 // Notes:
@@ -248,10 +241,8 @@ inline void Logger::generateAlertLevelString(LogLevel level, std::ostringstream&
 
 inline void Logger::generatePid(std::ostringstream& ss)
 {
-#if defined(_WIN32)
-    const DWORD pid = GetCurrentProcessId();
+    const uint16_t pid = (uint16_t)_getpid();
     ss << " [PID: " << std::to_string(pid) << "]";
-#endif //_WIN32
 }
 
 inline void Logger::LogInst(LogLevel level, const std::vector<enum _logging_type_dest>& type, const std::string& s)
@@ -266,9 +257,7 @@ inline void Logger::LogInst(LogLevel level, const std::vector<enum _logging_type
         switch (*i) {
         case _logging_type_dest_windows_debug:
         {
-#if defined (_WIN32)       
-            OutputDebugStringA(ss.str().c_str());
-#endif //_WIN32
+            continue;
         }
         break;
         case _logging_type_dest_file:
