@@ -59,7 +59,7 @@ static ERROR HandleCreateFile(const std::string &val) {
 	ERROR err = ERROR_OK;
 
 	if (std::filesystem::exists(val)) {
-		LOG_WARNING("File exists (-create flag) %s. Deleting.", val);
+		LOG_WARNING("File exists (-create flag) %s. Deleting.", val.c_str());
 		if(std::filesystem::remove(val)) {
 			return ERROR_DELETE_FILE_FAIL;
 		}
@@ -98,14 +98,13 @@ static ERROR HandleCreateFile(const std::string &val) {
 	// Create ciphertext
 	std::vector<std::byte> iv(EVP_MAX_IV_LENGTH);
 	std::vector<std::byte> cipherText;
-	err = EncryptData(fileData, sha256, iv, cipherText);
+	err = EncryptData(fileData, sha256, iv, &cipherText);
 	if (err != ERROR_OK) {
 		return err;
 	}
 
 	// Create file
-	std::vector<std::byte> rawFile;
-	rawFile.reserve(sizeof(CRYPT_FILE_HEADER) + cipherText.size());
+	std::vector<std::byte> rawFile(sizeof(CRYPT_FILE_HEADER) + cipherText.size());
 	std::memcpy(rawFile.data(), &hdr, sizeof(CRYPT_FILE_HEADER));
 	std::memcpy(rawFile.data() + sizeof(CRYPT_FILE_HEADER), cipherText.data(), cipherText.size());
 	err = WriteFile(rawFile, val);

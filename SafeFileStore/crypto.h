@@ -15,4 +15,4 @@ ERROR EncryptData(
     __in const std::vector<std::byte> &data,
     __in const std::vector<std::byte> &sha256,
     __in const std::vector<std::byte> &iv,
-    __out std::vector<std::byte> &cipherText);
+    __out std::vector<std::byte> *cipherText);

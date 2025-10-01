@@ -28,12 +28,12 @@ CRC32 CalculateCrc32(const std::vector<std::byte> data)
 }
 
 ERROR EncryptData(
-    __in const std::vector<std::byte> &data, 
+    __in const std::vector<std::byte> &data,
     __in const std::vector<std::byte> &sha256,
     __in const std::vector<std::byte> &iv,
-    __out std::vector<std::byte> &cipherText)
+    __out std::vector<std::byte> *cipherText)
 {
-    if (iv.size() != EVP_MAX_IV_LENGTH || sha256.size() != EVP_MAX_MD_SIZE / 2) {
+    if(iv.size() != EVP_MAX_IV_LENGTH || sha256.size() != EVP_MAX_MD_SIZE / 2) {
         return ERROR_PARAMS;
     }
 
@@ -45,37 +45,80 @@ ERROR EncryptData(
         return ERROR_AES_CTX_INIT;
     }
 
-    if(1 != EVP_EncryptInit_ex(ctx, 
+    if(1 != EVP_EncryptInit_ex(ctx,
         EVP_aes_256_cbc(),
         NULL,
         reinterpret_cast<const unsigned char*>(sha256.data()),
-        reinterpret_cast<const unsigned char*>(iv.data()))) 
+        reinterpret_cast<const unsigned char*>(iv.data())))
     {
         return ERROR_AES_ENCRYPT_INIT;
     }
-    
-    cipherText.resize(data.size());
+
+    cipherText->resize(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
     if(1 != EVP_EncryptUpdate(ctx,
-        reinterpret_cast<unsigned char*>(cipherText.data()),
+        reinterpret_cast<unsigned char*>(cipherText->data()),
         &len,
         reinterpret_cast<const unsigned char*>(data.data()),
         data.size())) {
         return ERROR_AES_ENCRYPT_UPDATE;
     }
-    ciphertext_len = len;
 
     if(1 != EVP_EncryptFinal_ex(ctx,
-        reinterpret_cast<unsigned char*>(cipherText.data()) + len,
+        reinterpret_cast<unsigned char*>(cipherText->data()) + len,
         &len)) {
         return ERROR_AES_ENCRYPT_FINAL;
     }
 
-    ciphertext_len += len;
-    cipherText.push_back(std::byte(0));
+    EVP_CIPHER_CTX_free(ctx);
+
+    return ERROR_OK;
+}
+
+ERROR DecryptData(
+    __in const std::vector<std::byte> &data,
+    __in const std::vector<std::byte> &sha256,
+    __in const std::vector<std::byte> &iv,
+    __out std::vector<std::byte> *plaintext)
+{
+    if(iv.size() != EVP_MAX_IV_LENGTH || sha256.size() != EVP_MAX_MD_SIZE / 2) {
+        return ERROR_PARAMS;
+    }
+
+    EVP_CIPHER_CTX *ctx = nullptr;
+    int len = 0;
+    int ciphertext_len = 0;
+
+    if(!(ctx = EVP_CIPHER_CTX_new())) {
+        return ERROR_AES_CTX_INIT;
+    }
+
+    if(1 != EVP_DecryptInit_ex(ctx,
+        EVP_aes_256_cbc(),
+        NULL,
+        reinterpret_cast<const unsigned char*>(sha256.data()),
+        reinterpret_cast<const unsigned char*>(iv.data())))
+    {
+        return ERROR_AES_ENCRYPT_INIT;
+    }
+
+    plaintext->resize(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
+    if(1 != EVP_DecryptUpdate(ctx,
+        reinterpret_cast<unsigned char*>(plaintext->data()),
+        &len,
+        reinterpret_cast<const unsigned char*>(data.data()),
+        data.size())) {
+        return ERROR_AES_ENCRYPT_UPDATE;
+    }
+
+    if(1 != EVP_DecryptFinal_ex(ctx,
+        reinterpret_cast<unsigned char*>(plaintext->data()) + len,
+        &len)) {
+        return ERROR_AES_ENCRYPT_FINAL;
+    }
 
     EVP_CIPHER_CTX_free(ctx);
 
-    return ERROR_OK;    
+    return ERROR_OK;
 }
 
 ERROR CalculateSHA256(const std::vector<std::byte> &in, std::vector<std::byte> &out)
