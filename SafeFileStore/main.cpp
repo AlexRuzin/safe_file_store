@@ -59,22 +59,23 @@ static ERROR HandleCreateFile(const std::string &val) {
 	ERROR err = ERROR_OK;
 
 	if (std::filesystem::exists(val)) {
-		return ERROR_FILE_ALREADY_EXISTS;
+		LOG_WARNING("File exists (-create flag) %s. Deleting.", val);
+		if(std::filesystem::remove(val)) {
+			return ERROR_DELETE_FILE_FAIL;
+		}
 	}
 
 	// Get password
 	std::string pass;
-	std::cin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
+	//std::cin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
 	std::getline(std::cin, pass);
 
 	// Gen sha256
-	std::byte sha256[EVP_MAX_MD_SIZE];
+	std::vector<std::byte> sha256(EVP_MAX_MD_SIZE / 2);
 	std::vector<std::byte> passVec;
-	passVec.reserve(pass.size());
 	std::transform(pass.begin(),pass.end(),
 		std::back_inserter(passVec),
 		[](unsigned char c) { return static_cast<std::byte>(c); });
-
 	pass.clear();
 
 	// Generate sha256 of pass
@@ -85,7 +86,6 @@ static ERROR HandleCreateFile(const std::string &val) {
 
 	// crc32 of blankfile
 	std::vector<std::byte> fileData;
-	fileData.reserve(baseFileContents.size());
 	std::transform(baseFileContents.begin(),baseFileContents.end(),
 		std::back_inserter(fileData),
 		[](unsigned char c) { return static_cast<std::byte>(c); });
@@ -95,7 +95,23 @@ static ERROR HandleCreateFile(const std::string &val) {
 	// Create file
 	CRYPT_FILE_HEADER hdr(fileData.size(), crc32);
 
+	// Create ciphertext
+	std::vector<std::byte> iv(EVP_MAX_IV_LENGTH);
+	std::vector<std::byte> cipherText;
+	err = EncryptData(fileData, sha256, iv, cipherText);
+	if (err != ERROR_OK) {
+		return err;
+	}
 
+	// Create file
+	std::vector<std::byte> rawFile;
+	rawFile.reserve(sizeof(CRYPT_FILE_HEADER) + cipherText.size());
+	std::memcpy(rawFile.data(), &hdr, sizeof(CRYPT_FILE_HEADER));
+	std::memcpy(rawFile.data() + sizeof(CRYPT_FILE_HEADER), cipherText.data(), cipherText.size());
+	err = WriteFile(rawFile, val);
+	if (err != ERROR_OK) {
+		return err;
+	}
 
 	return ERROR_OK;
 }
