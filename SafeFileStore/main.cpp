@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstdint>
+#include <fstream>
 #include <filesystem>
 #include <algorithm>
 #include <cstddef>
@@ -13,8 +14,8 @@
 #include "file.h"
 #include "error.h"
 
-ERROR HandleCreateFile(const std::string &val);
-ERROR HandleOpenFile(const std::string &val);
+ERROR HandleCreateFile(const std::string &path);
+ERROR HandleOpenFile(const std::string &path);
 
 int32_t main(uint32_t argc, const char* argv[]) {
 	// Init logging
@@ -98,18 +99,17 @@ int32_t main(uint32_t argc, const char* argv[]) {
 	return 0;
 }
 
-static ERROR HandleCreateFile(const std::string &val) {
+static ERROR HandleCreateFile(const std::string &path) {
 	ERROR err = ERROR_OK;
 
-	if (std::filesystem::exists(val)) {
-		LOG_WARNING("File exists (-create flag) %s. Deleting.", val.c_str());
-		if(std::filesystem::remove(val)) {
-			return ERROR_DELETE_FILE_FAIL;
-		}
+	FileOps file(path);
+	err = file.LockFile();
+	if (err != ERROR_OK) {
+		return err;
 	}
 
 	const std::vector<std::byte> iv(EVP_MAX_IV_LENGTH);
-	CryptOps ops(CryptOps::GetPass(), iv);
+	CryptOps crypt(CryptOps::GetPass(), iv);
 
 	// crc32 of blankfile
 	std::vector<std::byte> fileData;
@@ -119,12 +119,12 @@ static ERROR HandleCreateFile(const std::string &val) {
 	
 	CRC32 crc32 = CryptOps::CalculateCrc32(fileData);
 
-	// Create file
+	// header
 	CRYPT_FILE_HEADER hdr(fileData.size(), crc32);
 
-	// Create ciphertext
+	// ciphertext
 	std::vector<std::byte> *cipherText = nullptr;
-	err = ops.EncryptData(fileData, cipherText);
+	err = crypt.EncryptData(fileData, cipherText);
 	if (err != ERROR_OK) {
 		return err;
 	}
@@ -132,11 +132,14 @@ static ERROR HandleCreateFile(const std::string &val) {
 		return ERROR_AES_ENCRYPT_FAIL;
 	}
 
-	// Create file
+	// Create raw file data
 	std::vector<std::byte> rawFile(sizeof(CRYPT_FILE_HEADER) + cipherText->size());
 	std::memcpy(rawFile.data(), &hdr, sizeof(CRYPT_FILE_HEADER));
 	std::memcpy(rawFile.data() + sizeof(CRYPT_FILE_HEADER), cipherText->data(), cipherText->size());
-	err = WriteFile(rawFile, val);
+
+	// Write
+	file.SetData(rawFile);
+	err = file.WriteFile();
 	if (err != ERROR_OK) {
 		delete cipherText;
 		return err;
@@ -146,10 +149,13 @@ static ERROR HandleCreateFile(const std::string &val) {
 	return ERROR_OK;
 }
 
-static ERROR HandleOpenFile(const std::string &val) {
-	const std::vector<std::byte> *buf = ReadFile(val);
-	if (buf == nullptr) {
-		return ERROR_CANNOT_OPEN_FILE;
+static ERROR HandleOpenFile(const std::string &path) {
+	ERROR err = ERROR_OK;
+
+	FileOps file(path);
+	err = file.LockFile();
+	if(err != ERROR_OK) {
+		return err;
 	}
 
 	return ERROR_OK;

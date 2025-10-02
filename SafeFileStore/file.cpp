@@ -8,44 +8,99 @@
 #include "error.h"
 #include "user_logging.h"
 
-std::vector<std::byte> *ReadFile(const std::string &path) 
+FileOps::FileOps(const std::string &path) :
+    path(path)
 {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-
-    if (!file.is_open()) {
-        LOG_ERROR("failed to open filepath %s", path);
-        return nullptr;
-    }
-
-    std::streamsize fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<std::byte> *buffer = new std::vector<std::byte>(fileSize);
-    if (!file.read((char *)buffer->data(), fileSize)) {
-        LOG_ERROR("failed to read file %s", path);
-        return nullptr;
-    } 
-
-    LOG_INFO("successfully read file %s (size %d)", path, fileSize);
-    return buffer;
+    
 }
 
-ERROR WriteFile(const std::vector<std::byte> &data, const std::string filePath)
+FileOps::~FileOps(void)
 {
-    if (std::filesystem::exists(filePath)) {
-        if (std::filesystem::remove(filePath)) {
-            return ERROR_DELETE_FILE_FAIL;
-        }
+    if (buf.size() > 0) {
+        std::memset(buf.data(),0x00,buf.size());
+        buf.clear();
     }
 
-    std::ofstream outFp(filePath, std::ios::binary);
+    // release lock on file
+    if (fileStream.is_open()) {
+        fileStream.close();
+    }
+}
 
-    if (!outFp.is_open()) {
+bool FileOps::LockFile(void)
+{
+     this->fileStream = std::fstream(path, std::ios::app | std::ios::in | std::ios::out);
+     if (fileStream.is_open()) {
+        return true;
+     }
+
+     return false;
+}
+
+void FileOps::SetData(const std::vector<std::byte> &in)
+{
+    if (in.size() == 0) {
+        return;
+    }
+
+    if (buf.size() > 0) {
+        std::memset(buf.data(), 0x00, buf.size());
+        buf.clear();
+    }
+
+    buf = in;
+}
+
+const std::vector<std::byte> *FileOps::GetData(void) const
+{
+    if (buf.size() == 0) {
+        return nullptr;
+    }
+
+    return &buf;
+}
+
+ERROR FileOps::ReadFile(void)
+{
+    if(!fileStream.is_open()) {
         return ERROR_FILE_NOT_OPEN;
     }
 
-    outFp.write(reinterpret_cast<const char*>(data.data()), data.size());
-    outFp.close();
+    if (buf.size() > 0) {
+        std::memset(buf.data(),0x00,buf.size());
+        buf.clear();
+    }
+
+    std::streamsize fileSize = fileStream.tellg();
+    fileStream.seekg(0, std::ios::beg);
+    
+    if (!fileStream.read(reinterpret_cast<char *>(buf.data()), fileSize)) {
+        return ERROR_FILE_READ_FAIL;
+    } 
 
     return ERROR_OK;
+}
+
+ERROR FileOps::WriteFile(void)
+{
+    if (!fileStream.is_open()) {
+        return ERROR_FILE_NOT_OPEN;
+    }
+
+    if (buf.size() == 0) {
+        return ERROR_NO_DATA;
+    }
+
+    fileStream.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+
+    return ERROR_OK;
+}
+
+bool FileOps::DeleteFile(const std::string &path)
+{
+    if (!std::filesystem::exists(path)) {
+        return true;
+    }
+
+    return std::filesystem::remove(path);
 }

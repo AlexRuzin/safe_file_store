@@ -15,6 +15,13 @@ CryptOps::CryptOps(const std::string pass,const std::vector<std::byte> &iv) :
     
 }
 
+CryptOps::~CryptOps(void)
+{
+    std::memset(iv.data(), 0x00, iv.size());
+    std::memset(pass.data(), 0x00, pass.size());
+    std::memset(sha256.data(), 0x00, sha256.size());
+}
+
 std::string CryptOps::GetPass(void) 
 {
     std::string pass;

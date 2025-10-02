@@ -12,13 +12,14 @@
 
 class CryptOps {
 private:
-    const std::vector<std::byte> iv;
-    const std::string pass;
+    std::vector<std::byte> iv;
+    std::string pass;
 
     std::vector<std::byte> sha256;
 
 public:
     CryptOps(const std::string pass, const std::vector<std::byte> &iv);
+    ~CryptOps(void);
 
 private:
     static ERROR CalculateSHA256(const std::vector<std::byte> &in,std::vector<std::byte> &out);
