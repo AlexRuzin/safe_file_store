@@ -19,7 +19,6 @@ ERROR HandleOpenFile(const std::string &val);
 int32_t main(uint32_t argc, const char* argv[]) {
 	// Init logging
 	LOG_INIT(ProjectName, LOG_SOURCE_CONSOLE);
-	LOG_INFO("%s", "test\n");
 
 	// Parse parameters
 	ParameterParser params(argc, argv);
@@ -31,11 +30,15 @@ int32_t main(uint32_t argc, const char* argv[]) {
 		if (path == nullptr) {
 			return ERROR_CANNOT_OPEN_FILE;
 		}
+		LOG_INFO("opening existing file: %s", path->c_str());
 		const ERROR err = HandleOpenFile(*path);
 		if (err != ERROR_OK) {
 			LOG_ERROR("HandleOpenFile failed with 0x%08x\n", err);
 			return err;
 		}
+
+		LOG_INFO("cleanly closing existing file: %s",path->c_str());
+		return 0;
 	}
 
 	// Create new file
@@ -44,14 +47,54 @@ int32_t main(uint32_t argc, const char* argv[]) {
 		if(path == nullptr) {
 			return ERROR_CANNOT_CREATE_FILE;
 		}
+		LOG_INFO("opening new file: %s",path->c_str());
 		const ERROR err = HandleCreateFile(*path);
 		if(err != ERROR_OK) {
 			LOG_ERROR("HandleCraeteFile failed with 0x%08x\n", err);
 			return err;
 		}
+
+		LOG_INFO("cleanly closing new file: %s", path->c_str());
+		return 0;
 	}
 
-	LOG_INFO("clean exit\n");
+	// Test operations
+	if(params.GetParamValue(FlagTest) != nullptr) {
+		LOG_DEBUG("entering crypto test mode...");
+		const std::string* path = params.GetParamValue(FlagCreate);
+		if(path == nullptr) {
+			LOG_ERROR("flag %s must have a parameter", FlagTest.c_str());
+			return ERROR_CANNOT_CREATE_FILE;
+		}
+
+		// Delete test file if exists
+		if(std::filesystem::exists(*path)) {
+			if(std::filesystem::remove(*path)) {
+				LOG_ERROR("failed to delete test file %s", path->c_str());
+				return ERROR_DELETE_FILE_FAIL;
+			}
+		}
+
+		// Create new file
+		LOG_INFO("opening new file: %s",path->c_str());
+		ERROR err = HandleCreateFile(*path);
+		if(err != ERROR_OK) {
+			LOG_ERROR("HandleCraeteFile failed with 0x%08x\n",err);
+			return err;
+		}
+
+		err = HandleOpenFile(*path);
+		if(err != ERROR_OK) {
+			LOG_ERROR("HandleOpenFile failed with 0x%08x\n",err);
+			return err;
+		}
+
+		LOG_INFO("test successful on file: %s",path->c_str());
+		return 0;
+	}
+
+
+	LOG_INFO("no parameters specified, closing\n");
 	return 0;
 }
 

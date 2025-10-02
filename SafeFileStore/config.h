@@ -12,3 +12,6 @@ const std::string FlagOpen("-open");
 
 // Create flag
 const std::string FlagCreate("-create");
+
+// Test flag
+const std::string FlagTest("-test");
