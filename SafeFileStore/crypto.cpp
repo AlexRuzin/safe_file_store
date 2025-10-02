@@ -3,10 +3,38 @@
 #include "error.h"
 
 #include <vector>
+#include <algorithm>
 #include <stdint.h>
 #include <openssl/evp.h>
 
-CRC32 CalculateCrc32(const std::vector<std::byte> data)
+CryptOps::CryptOps(const std::string pass,const std::vector<std::byte> &iv) :
+    iv(iv),
+    pass(pass),
+    sha256(EVP_MAX_MD_SIZE / 2)
+{
+    
+}
+
+std::string CryptOps::GetPass(void) 
+{
+    std::string pass;
+    std::getline(std::cin,pass);
+    return pass;
+}
+
+ERROR CryptOps::GenShaFromPass(void)
+{
+    std::vector<std::byte> passVec;
+    std::transform(pass.begin(),pass.end(),
+        std::back_inserter(passVec),
+        [](unsigned char c) { return static_cast<std::byte>(c); });
+
+    const ERROR err = CalculateSHA256(passVec, this->sha256);
+    passVec.clear();
+    return err;
+}
+
+CRC32 CryptOps::CalculateCrc32(const std::vector<std::byte> data)
 {
     const char *ptr = reinterpret_cast<const char*>(data.data());
 
@@ -27,11 +55,9 @@ CRC32 CalculateCrc32(const std::vector<std::byte> data)
     return ~crc;
 }
 
-ERROR EncryptData(
+const ERROR CryptOps::EncryptData(
     __in const std::vector<std::byte> &data,
-    __in const std::vector<std::byte> &sha256,
-    __in const std::vector<std::byte> &iv,
-    __out std::vector<std::byte> *cipherText)
+    __out std::vector<std::byte> *cipherOut) const
 {
     if(iv.size() != EVP_MAX_IV_LENGTH || sha256.size() != EVP_MAX_MD_SIZE / 2) {
         return ERROR_PARAMS;
@@ -54,7 +80,8 @@ ERROR EncryptData(
         return ERROR_AES_ENCRYPT_INIT;
     }
 
-    cipherText->resize(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
+    std::vector<std::byte> *cipherText = 
+        new std::vector<std::byte>(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
     if(1 != EVP_EncryptUpdate(ctx,
         reinterpret_cast<unsigned char*>(cipherText->data()),
         &len,
@@ -70,15 +97,15 @@ ERROR EncryptData(
     }
 
     EVP_CIPHER_CTX_free(ctx);
+    cipherOut = cipherText;
 
     return ERROR_OK;
 }
 
-ERROR DecryptData(
+const ERROR CryptOps::DecryptData(
     __in const std::vector<std::byte> &data,
-    __in const std::vector<std::byte> &sha256,
-    __in const std::vector<std::byte> &iv,
-    __out std::vector<std::byte> *plaintext)
+    __out std::vector<std::byte> *plainOut
+) const
 {
     if(iv.size() != EVP_MAX_IV_LENGTH || sha256.size() != EVP_MAX_MD_SIZE / 2) {
         return ERROR_PARAMS;
@@ -101,7 +128,8 @@ ERROR DecryptData(
         return ERROR_AES_ENCRYPT_INIT;
     }
 
-    plaintext->resize(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
+    std::vector<std::byte> *plaintext = 
+        new std::vector<std::byte>(data.size() + (EVP_MAX_BLOCK_LENGTH - (data.size() % EVP_MAX_BLOCK_LENGTH)));
     if(1 != EVP_DecryptUpdate(ctx,
         reinterpret_cast<unsigned char*>(plaintext->data()),
         &len,
@@ -117,11 +145,12 @@ ERROR DecryptData(
     }
 
     EVP_CIPHER_CTX_free(ctx);
+    plainOut = plaintext;
 
     return ERROR_OK;
 }
 
-ERROR CalculateSHA256(const std::vector<std::byte> &in, std::vector<std::byte> &out)
+ERROR CryptOps::CalculateSHA256(const std::vector<std::byte> &in, std::vector<std::byte> &out)
 {
     if (out.size() != EVP_MAX_MD_SIZE / 2) {
         return ERROR_OK;

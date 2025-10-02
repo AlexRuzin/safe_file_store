@@ -61,7 +61,7 @@ int32_t main(uint32_t argc, const char* argv[]) {
 	// Test operations
 	if(params.GetParamValue(FlagTest) != nullptr) {
 		LOG_DEBUG("entering crypto test mode...");
-		const std::string* path = params.GetParamValue(FlagCreate);
+		const std::string* path = params.GetParamValue(FlagTest);
 		if(path == nullptr) {
 			LOG_ERROR("flag %s must have a parameter", FlagTest.c_str());
 			return ERROR_CANNOT_CREATE_FILE;
@@ -108,24 +108,8 @@ static ERROR HandleCreateFile(const std::string &val) {
 		}
 	}
 
-	// Get password
-	std::string pass;
-	//std::cin.ignore(std::numeric_limits<std::streamsize>::max(),'\n');
-	std::getline(std::cin, pass);
-
-	// Gen sha256
-	std::vector<std::byte> sha256(EVP_MAX_MD_SIZE / 2);
-	std::vector<std::byte> passVec;
-	std::transform(pass.begin(),pass.end(),
-		std::back_inserter(passVec),
-		[](unsigned char c) { return static_cast<std::byte>(c); });
-	pass.clear();
-
-	// Generate sha256 of pass
-	err = CalculateSHA256(passVec, sha256);
-	if (err != ERROR_OK) {
-		return err;
-	}
+	const std::vector<std::byte> iv(EVP_MAX_IV_LENGTH);
+	CryptOps ops(CryptOps::GetPass(), iv);
 
 	// crc32 of blankfile
 	std::vector<std::byte> fileData;
@@ -133,28 +117,32 @@ static ERROR HandleCreateFile(const std::string &val) {
 		std::back_inserter(fileData),
 		[](unsigned char c) { return static_cast<std::byte>(c); });
 	
-	CRC32 crc32 = CalculateCrc32(fileData);
+	CRC32 crc32 = CryptOps::CalculateCrc32(fileData);
 
 	// Create file
 	CRYPT_FILE_HEADER hdr(fileData.size(), crc32);
 
 	// Create ciphertext
-	std::vector<std::byte> iv(EVP_MAX_IV_LENGTH);
-	std::vector<std::byte> cipherText;
-	err = EncryptData(fileData, sha256, iv, &cipherText);
+	std::vector<std::byte> *cipherText = nullptr;
+	err = ops.EncryptData(fileData, cipherText);
 	if (err != ERROR_OK) {
 		return err;
+	}
+	if (cipherText == nullptr) {
+		return ERROR_AES_ENCRYPT_FAIL;
 	}
 
 	// Create file
-	std::vector<std::byte> rawFile(sizeof(CRYPT_FILE_HEADER) + cipherText.size());
+	std::vector<std::byte> rawFile(sizeof(CRYPT_FILE_HEADER) + cipherText->size());
 	std::memcpy(rawFile.data(), &hdr, sizeof(CRYPT_FILE_HEADER));
-	std::memcpy(rawFile.data() + sizeof(CRYPT_FILE_HEADER), cipherText.data(), cipherText.size());
+	std::memcpy(rawFile.data() + sizeof(CRYPT_FILE_HEADER), cipherText->data(), cipherText->size());
 	err = WriteFile(rawFile, val);
 	if (err != ERROR_OK) {
+		delete cipherText;
 		return err;
 	}
 
+	delete cipherText;
 	return ERROR_OK;
 }
 
